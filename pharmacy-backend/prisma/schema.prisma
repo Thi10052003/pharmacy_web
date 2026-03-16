@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- ENUMS ---
+
+enum PrescriptionStatus {
+  ACTIVE
+  CANCELLED
+}
+
+// Trạng thái phiếu nhập kho
+enum ImportStatus {
+  DRAFT      // Lưu nháp
+  COMPLETED  // Hoàn thành
+}
+
+// --- MODELS ---
+model Account {
+  id          String   @id @default(uuid())
+  phone       String   @unique // SĐT là duy nhất (Unique Key)
+  totalPoints Int      @default(0) // Điểm tích lũy của cả gia đình
+  
+  profiles    PatientProfile[] // Các thành viên trong gia đình
+  prescriptions Prescription[] // Các đơn hàng do tài khoản này thanh toán
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PatientProfile {
+  id           String   @id @default(uuid())
+  accountId    String
+  fullName     String
+  gender       String?
+  birthYear    Int?
+  relationship String   @default("Chủ hộ") // Ví dụ: Chủ hộ, Vợ, Chồng, Con trai...
+  
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  prescriptions Prescription[] // Lịch sử dùng thuốc của riêng người này
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// --- QUẢN LÝ NHÀ CUNG CẤP ---
+
+model Supplier {
+  id          String       @id @default(cuid())
+  name        String       // Tên nhà cung cấp (F4)
+  phone       String?
+  address     String?
+  debt        Decimal      @default(0) @db.Decimal(12, 2) // Công nợ hiện tại
+  payments     SupplierPayment[]
+  importBills ImportBill[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+model SupplierPayment {
+  id            String   @id @default(cuid())
+  supplierId    String
+  amount        Float    // Số tiền trả
+  paymentMethod String   // Hình thức: Tiền mặt, Chuyển khoản
+  note          String?  // Ghi chú
+  
+  supplier      Supplier @relation(fields: [supplierId], references: [id])
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+// --- QUẢN LÝ THUỐC & LÔ HÀNG ---
+
+model Medicine {
+  id              String   @id @default(cuid())
+  name            String
+  code            String?  @unique
+  isActive        Boolean  @default(true)
+
+  // Cấu trúc 3 cấp đơn vị (Giữ nguyên logic của bạn)
+  baseUnitName    String   @default("Viên")
+  baseUnitPrice   Float    @default(0)
+  subUnitName     String?
+  pillsPerSubUnit Int?
+  subUnitPrice    Float?
+  mainUnitName    String?
+  mainUnitRatio   Int?
+  mainUnitPrice   Float?
+
+  // Tồn kho tổng (Sẽ được đồng bộ từ tổng số lượng các Lô)
+  currentStock    Float    @default(0)
+
+  batches           Batch[]            // Các lô hàng thực tế trong kho
+  importBillItems   ImportBillItem[]   // Lịch sử nhập hàng chi tiết
+  inventoryHistory  InventoryHistory[]
+  prescriptionItems PrescriptionItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// Lô hàng thực tế trong kho (Batch)
+model Batch {
+  id                String   @id @default(cuid())
+  medicineId        String
+  batchNumber       String   // Số lô (Ví dụ: LO2026-01)
+  expiryDate        DateTime // Hạn sử dụng (HSD)
+  
+  // Tồn kho thực tế của riêng lô này (quy đổi về đơn vị gốc)
+  remainingQuantity Float    
+  purchasePrice     Float    // Giá nhập của lô này để tính giá vốn
+
+  medicine          Medicine @relation(fields: [medicineId], references: [id])
+  prescriptionItems PrescriptionItem[]
+  inventoryHistory  InventoryHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([medicineId, batchNumber, expiryDate])
+}
+
+// --- QUẢN LÝ NHẬP KHO CHUYÊN SÂU ---
+
+model ImportBill {
+  id            String       @id @default(cuid())
+  billCode      String?      @unique // Mã phiếu tự động
+  invoiceCode   String?      // Mã hóa đơn nhà cung cấp
+  
+  supplierId    String
+  supplier      Supplier     @relation(fields: [supplierId], references: [id])
+
+  // Tài chính phiếu nhập
+  totalAmount   Decimal      @db.Decimal(12, 2) // Tổng tiền hàng
+  totalDiscount Decimal      @default(0) @db.Decimal(12, 2)
+  vatAmount     Decimal      @default(0) @db.Decimal(12, 2)
+  paidAmount    Decimal      @default(0) @db.Decimal(12, 2) // Thanh toán (F6)
+  
+  status        ImportStatus @default(COMPLETED)
+  paymentMethod String       @default("Tiền mặt")
+  note          String?
+  
+  items         ImportBillItem[]
+  importDate    DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+}
+
+model ImportBillItem {
+  id           String     @id @default(cuid())
+  importBillId String
+  medicineId   String
+  
+  unitName     String     // Đơn vị lúc nhập (Viên/Vỉ/Hộp)
+  quantity     Float      // Số lượng theo đơn vị nhập
+  purchasePrice Float     // Đơn giá nhập
+  
+  // Thông tin lô hàng lúc nhập
+  batchNumber  String
+  expiryDate   DateTime
+  
+  importBill   ImportBill @relation(fields: [importBillId], references: [id])
+  medicine     Medicine   @relation(fields: [medicineId], references: [id])
+}
+
+// --- QUẢN LÝ GIAO DỊCH ---
+
+model InventoryHistory {
+  id         String   @id @default(cuid())
+  medicineId String
+  batchId    String?  // Gắn với lô cụ thể để theo dõi chính xác HSD
+  action     String   // IMPORT, EXPORT, PRESCRIPTION, CANCEL_PRESCRIPTION
+  quantity   Float
+  stockAfter Float
+  note       String?
+  createdAt  DateTime @default(now())
+
+  medicine Medicine @relation(fields: [medicineId], references: [id])
+  batch    Batch?   @relation(fields: [batchId], references: [id])
+}
+
+model Prescription {
+  id               String             @id @default(uuid())
+  
+  // NỐI DÂY MỚI: 1 đơn thuốc phải biết ai trả tiền, ai uống thuốc
+  accountId        String?            // Liên kết tới Ví điểm
+  patientProfileId String?            // Liên kết tới Hồ sơ y tế
+
+  purchaseDate     DateTime           @default(now())
+  totalAmount      Decimal            @default(0) @db.Decimal(12, 2)
+  earnedPoints     Int                @default(0)
+  status           PrescriptionStatus @default(ACTIVE)
+  
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  // Quan hệ (Relations)
+  account          Account?           @relation(fields: [accountId], references: [id])
+  patientProfile   PatientProfile?    @relation(fields: [patientProfileId], references: [id])
+  items            PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id             String  @id @default(cuid())
+  prescriptionId String
+  medicineId     String
+  batchId        String? // Bán từ lô nào? (Hỗ trợ truy xuất nguồn gốc)
+  
+  quantity       Float
+  priceSnapshot  Float
+  dosage         String?
+  sellUnit        String?  // Đơn vị khách chọn lúc mua (Ví dụ: "Hộp")
+  conversionRatio Float?   @default(1) // Tỷ lệ quy đổi (Ví dụ 1 Hộp = 120 viên)
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicine     Medicine     @relation(fields: [medicineId], references: [id])
+  batch        Batch?       @relation(fields: [batchId], references: [id])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique             // Tên đăng nhập (VD: admin, duocsi_a)
+  password  String                       // Mật khẩu (sẽ được mã hóa băm)
+  fullName  String                       // Tên hiển thị (VD: Nguyễn Văn A)
+  role      String   @default("PHARMACIST") // Phân quyền: "ADMIN" hoặc "PHARMACIST"
+  isActive  Boolean  @default(true)      // Khóa tài khoản nếu nhân viên nghỉ việc
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
