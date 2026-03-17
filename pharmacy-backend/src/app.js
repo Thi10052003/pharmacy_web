@@ -9,7 +9,7 @@ const supplierRoutes = require("./routes/suppliers");
 const authRoutes = require("./routes/auth");
 const app = express()
 app.use(cors({
-  origin: "http://localhost:3000", // FE
+  origin: process.env.CLIENT_URL || "http://localhost:3000", // FE
   credentials: true,
 }))
 app.use(express.json()) 
