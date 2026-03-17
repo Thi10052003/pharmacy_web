@@ -12,6 +12,9 @@ app.use(cors({
   origin: process.env.CLIENT_URL || "http://localhost:3000", // FE
   credentials: true,
 }))
+app.get("/ping", (req, res) => {
+  res.status(200).send("Pong!");
+});
 app.use(express.json()) 
 app.use("/api/patients", patientRoutes)
 app.use("/api/medicines", medicineRoutes)
