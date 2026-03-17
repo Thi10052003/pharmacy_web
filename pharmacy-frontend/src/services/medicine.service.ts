@@ -11,12 +11,18 @@ export interface Batch {
 }
 
 // 2. Interface Medicine hoàn chỉnh
+// 2. Interface Medicine hoàn chỉnh (Đã cập nhật 3 cột mới)
 export interface Medicine {
   id: string
   code?: string
   name: string
   isActive: boolean
   
+  // --- 3 CỘT MỚI THÊM VÀO ---
+  registrationNo?: string | null     // Số đăng ký
+  activeIngredient?: string | null   // Hoạt chất chính
+  packagingSize?: string | null      // Quy cách đóng gói
+
   // Cấp 1: Đơn vị nhỏ nhất (Gốc)
   baseUnitName: string
   baseUnitPrice: number
@@ -76,5 +82,18 @@ export const deleteMedicine = async (id: string): Promise<void> => {
 export const toggleMedicineStatus = async ({ id, isActive }: { id: string; isActive: boolean }) => {
   // Trỏ đúng vào endpoint PATCH /:id/status vừa tạo
   const res = await api.patch(`/medicines/${id}/status`, { isActive });
+  return res.data;
+};
+// Gọi API Import Excel V2 (PriceList)
+export const importViettelExcel = async (file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  // Đổi đường dẫn tại đây:
+  const res = await api.post("/medicines/import-pricelist", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
   return res.data;
 };
