@@ -28,7 +28,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!isAuthorized) {
     return (
       <div style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <Spin size="large" tip="Đang kiểm tra bảo mật..." />
+        <Spin size="large" description="Đang kiểm tra bảo mật..." />
       </div>
     );
   }

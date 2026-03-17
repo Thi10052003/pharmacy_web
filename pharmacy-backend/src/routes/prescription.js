@@ -69,7 +69,6 @@ router.get("/:id", async (req, res) => {
 });
 
 // 4. XỬ LÝ THANH TOÁN (CORE LOGIC)
-// 4. XỬ LÝ THANH TOÁN (CORE LOGIC)
 router.post("/checkout", async (req, res) => {
   const { accountId, patientProfileId, items, earnedPoints, totalAmount } = req.body;
 
@@ -99,17 +98,35 @@ router.post("/checkout", async (req, res) => {
         const totalBaseQuantityToDeduct = buyQty * conversionRatio;
         serverCalculatedTotal += (unitPrice * buyQty);
 
+        // (Tùy chọn: Bạn có thể comment dòng này nếu muốn cho phép bán ÂM KHO)
         if (medicine.currentStock < totalBaseQuantityToDeduct) {
           throw new Error(`Thuốc ${medicine.name} không đủ tồn kho (Cần ${totalBaseQuantityToDeduct} viên, còn ${medicine.currentStock} viên)`);
         }
 
-        // Cập nhật tồn kho tổng
-        await tx.medicine.update({
+        // ==========================================
+        // MVP GIAI ĐOẠN 1: CHỈ TRỪ TỒN KHO TỔNG (BỎ QUA LÔ/DATE)
+        // ==========================================
+        const updatedMedicine = await tx.medicine.update({
           where: { id: medicine.id },
           data: { currentStock: { decrement: totalBaseQuantityToDeduct } }
         });
 
-        // TÍNH TOÁN "TỒN SAU CÙNG" (SỬA LỖI HIỂN THỊ SỐ 0)
+        // Đẩy vào mảng để tạo PrescriptionItem và InventoryHistory (Không có batchId)
+        processedItems.push({
+            medicineId: item.medicineId,
+            batchId: null, // Đặt null vì MVP không dùng Lô
+            quantity: totalBaseQuantityToDeduct, 
+            priceSnapshot: unitPrice / conversionRatio, 
+            dosage: item.dosage || "",
+            sellUnit: unitName, 
+            conversionRatio: conversionRatio,
+            stockAfter: updatedMedicine.currentStock // Lấy số tồn mới nhất sau khi trừ
+        });
+
+        // ==========================================
+        // ĐOẠN CODE FEFO XỬ LÝ LÔ/DATE ĐƯỢC ẨN ĐI BẰNG COMMENT (CHỜ TƯƠNG LAI)
+        // ==========================================
+        /*
         let remainingToDeduct = totalBaseQuantityToDeduct;
         let runningStock = medicine.currentStock; // Lấy tồn kho trước khi trừ làm mốc
 
@@ -122,7 +139,7 @@ router.post("/checkout", async (req, res) => {
           if (remainingToDeduct <= 0) break;
           const take = Math.min(remainingToDeduct, batch.remainingQuantity);
           
-          runningStock -= take; // Trừ dần để ra "Tồn sau cùng" của từng Lô
+          runningStock -= take; 
 
           await tx.batch.update({
             where: { id: batch.id },
@@ -137,13 +154,15 @@ router.post("/checkout", async (req, res) => {
             dosage: item.dosage || "",
             sellUnit: unitName, 
             conversionRatio: conversionRatio,
-            stockAfter: runningStock // LƯU KẾT QUẢ VÀO MẢNG
+            stockAfter: runningStock 
           });
 
           remainingToDeduct -= take;
         }
 
         if (remainingToDeduct > 0) throw new Error(`Kho lô của ${medicine.name} bị lỗi đồng bộ!`);
+        */
+        // ==========================================
       }
 
       // TẠO VỎ ĐƠN THUỐC
@@ -163,7 +182,7 @@ router.post("/checkout", async (req, res) => {
           data: {
             prescriptionId: prescription.id,
             medicineId: pItem.medicineId,
-            batchId: pItem.batchId,
+            batchId: pItem.batchId, // Sẽ là null trong bản MVP
             quantity: pItem.quantity,
             priceSnapshot: pItem.priceSnapshot,
             dosage: pItem.dosage,
@@ -175,15 +194,16 @@ router.post("/checkout", async (req, res) => {
         await tx.inventoryHistory.create({
           data: {
             medicineId: pItem.medicineId,
-            batchId: pItem.batchId,
+            batchId: pItem.batchId, // Sẽ là null trong bản MVP
             action: "EXPORT",
             quantity: -pItem.quantity,
-            stockAfter: pItem.stockAfter, // SỬ DỤNG GIÁ TRỊ ĐÃ TÍNH THAY VÌ SỐ 0
+            stockAfter: pItem.stockAfter, 
             note: `Bán hàng (POS) - Đơn: ${prescription.id.slice(-6)}`
           }
         });
       }
 
+      // CẬP NHẬT ĐIỂM TÍCH LŨY
       if (accountId && prescription.earnedPoints > 0) {
         await tx.account.update({
           where: { id: accountId },
@@ -227,29 +247,29 @@ router.post("/:id/cancel", async (req, res) => {
 
       // XỬ LÝ HOÀN KHO VÀ GHI NHẬT KÝ
       for (const item of prescription.items) {
-        // Lấy tồn kho hiện tại trước khi cộng lại
-        const med = await tx.medicine.findUnique({ where: { id: item.medicineId } });
-        const newStockAfter = med.currentStock + item.quantity;
-
-        await tx.medicine.update({
+        // Cộng thẳng số lượng hoàn trả vào bảng Medicine (MVP)
+        const updatedMed = await tx.medicine.update({
           where: { id: item.medicineId },
           data: { currentStock: { increment: item.quantity } }
         });
 
+        // Ẩn tính năng hoàn lại Lô
+        /*
         if (item.batchId) {
           await tx.batch.update({
             where: { id: item.batchId },
             data: { remainingQuantity: { increment: item.quantity } }
           });
         }
+        */
 
         await tx.inventoryHistory.create({
           data: {
             medicineId: item.medicineId,
-            batchId: item.batchId,
+            batchId: null, // MVP: không gán Lô khi hoàn kho
             action: "IMPORT",
             quantity: item.quantity,
-            stockAfter: newStockAfter, // TRUYỀN TỒN KHO MỚI VÀO ĐÂY
+            stockAfter: updatedMed.currentStock, 
             note: `Hoàn kho do hủy đơn: ${prescription.id.slice(-6)}`
           }
         });

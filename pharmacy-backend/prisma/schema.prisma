@@ -75,31 +75,35 @@ model SupplierPayment {
 // --- QUẢN LÝ THUỐC & LÔ HÀNG ---
 
 model Medicine {
-  id              String   @id @default(cuid())
-  name            String
-  code            String?  @unique
-  isActive        Boolean  @default(true)
+  id              String   @id @default(uuid())
+  code            String   @unique // Mã SKU hàng hóa
+  name            String   // Tên thuốc/Hàng hóa
+  
+  // 3 CỘT MỚI
+  registrationNo  String?  // Số đăng ký
+  activeIngredient String? // Hoạt chất chính
+  packagingSize   String?  // Quy cách đóng gói
 
-  // Cấu trúc 3 cấp đơn vị (Giữ nguyên logic của bạn)
-  baseUnitName    String   @default("Viên")
-  baseUnitPrice   Float    @default(0)
-  subUnitName     String?
-  pillsPerSubUnit Int?
-  subUnitPrice    Float?
-  mainUnitName    String?
-  mainUnitRatio   Int?
-  mainUnitPrice   Float?
+  baseUnitName    String   
+  baseUnitPrice   Float    
+  subUnitName     String?  
+  subUnitPrice    Float?   
+  pillsPerSubUnit Int?     
+  mainUnitName    String?  
+  mainUnitPrice   Float?   
+  mainUnitRatio   Int?     
+  
+  // TRẢ LẠI 2 CỘT CŨ CHO BẠN (Không bị mất data)
+  currentStock    Float    @default(0) // Trả về Float (Số thực)
+  isActive        Boolean  @default(true) // Trả về cột trạng thái
 
-  // Tồn kho tổng (Sẽ được đồng bộ từ tổng số lượng các Lô)
-  currentStock    Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  batches           Batch[]            // Các lô hàng thực tế trong kho
-  importBillItems   ImportBillItem[]   // Lịch sử nhập hàng chi tiết
-  inventoryHistory  InventoryHistory[]
+  batches         Batch[]
+  importItems     ImportBillItem[]
+  histories       InventoryHistory[]
   prescriptionItems PrescriptionItem[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
 }
 
 // Lô hàng thực tế trong kho (Batch)
