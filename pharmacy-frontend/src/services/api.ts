@@ -20,16 +20,19 @@ api.interceptors.request.use((config) => {
 
 // Xử lý lỗi từ Backend trả về
 api.interceptors.response.use(
-  (response) => response,
+  (response) => response, // Nếu thành công thì cứ cho đi tiếp
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    // Nếu Server trả về lỗi 401 (Token hết hạn hoặc sai)
+    if (error.response && error.response.status === 401) {
+      console.warn("Phiên làm việc hết hạn, đang chuyển hướng về Login...");
+      
+      // Xóa sạch dấu vết cũ để tránh lag
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      
+      // Đẩy người dùng ra trang Login ngay lập tức
       if (typeof window !== "undefined") {
-        // KIỂM TRA: Nếu ĐANG Ở TRANG LOGIN thì KHÔNG tải lại trang (để hiện lỗi màu đỏ)
-        if (window.location.pathname !== "/login") {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          window.location.href = "/login"; // Bị đẩy ra ngoài nếu đang ở trong Dashboard mà token hết hạn
-        }
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);

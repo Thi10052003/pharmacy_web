@@ -23,7 +23,7 @@ router.post("/login", async (req, res) => {
       return res.status(403).json({ message: "Tài khoản này đã bị khóa!" });
     }
 
-    // So sánh mật khẩu
+    // So sánh mật khẩu 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Mật khẩu không chính xác!" });
@@ -31,10 +31,10 @@ router.post("/login", async (req, res) => {
 
     // Tạo "chìa khóa" (Token) có hạn 1 ngày
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, fullName: user.fullName },
-      JWT_SECRET,
-      { expiresIn: "1d" }
-    );
+  { id: user.id, username: user.username, role: user.role, fullName: user.fullName },
+  JWT_SECRET,
+  { expiresIn: "12h" } // Sửa từ "1d" thành "12h"
+);
 
     // Trả về thông tin (không trả về password)
     res.json({
